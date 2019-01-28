@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ciehanski/onionbox/onionbuffer"
+	"github.com/ciehanski/onionbox/internal/pkg/onionbuffer"
 )
 
 type Onionbox struct {

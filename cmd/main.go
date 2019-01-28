@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/ciehanski/onionbox/onionbox"
-	"github.com/ciehanski/onionbox/onionbuffer"
+	"github.com/ciehanski/onionbox/internal/pkg/onionbox"
+	"github.com/ciehanski/onionbox/internal/pkg/onionbuffer"
 	"github.com/cretz/bine/tor"
 	"github.com/ipsn/go-libtor"
 	"github.com/natefinch/lumberjack"
@@ -53,11 +53,11 @@ func main() {
 	}()
 
 	// Get running OS
-	var useEmbeddedCon bool
+	var embedCon bool
 	if runtime.GOOS == "windows" {
-		useEmbeddedCon = false
+		embedCon = false
 	} else {
-		useEmbeddedCon = true
+		embedCon = true
 	}
 
 	// Start tor
@@ -66,7 +66,7 @@ func main() {
 		ProcessCreator: libtor.Creator,
 		DebugWriter:    os.Stderr,
 		// This option is not supported on Windows
-		UseEmbeddedControlConn: useEmbeddedCon,
+		UseEmbeddedControlConn: embedCon,
 	})
 	if err != nil {
 		ob.Logf("Failed to start Tor: %v", err)

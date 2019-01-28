@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"syscall"
 
-	"github.com/ciehanski/onionbox/onionbuffer"
-	"github.com/ciehanski/onionbox/templates"
+	"github.com/ciehanski/onionbox/internal/pkg/onionbuffer"
+	"github.com/ciehanski/onionbox/internal/pkg/templates"
 )
 
 func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {

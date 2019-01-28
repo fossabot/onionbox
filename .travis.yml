@@ -3,8 +3,7 @@ go: 1.11.x
 os: linux
 dist: xenial
 sudo: false
-install:
-  - # leave blank
+install: true
 
 stages:
   - name: deploy
@@ -48,6 +47,9 @@ matrix:
       script:
         - gomobile bind -v -x -target=android -o android-arm64.aar .
         - go test -v -race -bench -cpu=1,2,4 ./...
+  fast_finish: true
+  allow_failures:
+    - env: BINARY=android-arm64.aar
 
 before_script: go get -u -a -v -x github.com/ipsn/go-libtor
 

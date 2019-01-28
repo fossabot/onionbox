@@ -1,5 +1,3 @@
-UNIX_BINARY=onionbox
-
 run: # Rebuild the docker container
 	docker build -t onionbox_image . && \
 	docker run --name onionbox -p 80 onionbox_image

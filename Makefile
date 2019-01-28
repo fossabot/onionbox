@@ -3,8 +3,8 @@ run: # Rebuild the docker container
 	docker run --name onionbox -p 80 onionbox_image
 stop:
 	docker stop onionbox && \
-	docker rm onionbox && \
-	docker container rmi onionbox_image
+	docker rmi onionbox_image && \
+	docker container rm onionbox
 restart: stop run
 exec:
 	docker exec -it onionbox bash

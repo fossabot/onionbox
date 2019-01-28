@@ -4,6 +4,10 @@ os: linux
 dist: xenial
 sudo: false
 
+stages:
+  - name: deploy
+    if: branch = master
+
 matrix:
   include:
     - name: linux-amd64
@@ -48,7 +52,6 @@ before_script: CGO_ENABLED=1 go build -gcflags=-m -a -tags netgo -ldflags '-w -e
 script: go test -v -race -bench -cpu=1,2,4 ./...
 
 deploy:
-  if: branch = master
   provider: releases
   api_key: "${GITHUB_PAT}"
   file: "onionbox-${BINARY}"

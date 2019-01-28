@@ -1,4 +1,4 @@
-module onionbox
+module github.com/ciehanski/onionbox
 
 require (
 	github.com/Pallinder/go-randomdata v1.1.0

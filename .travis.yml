@@ -1,6 +1,5 @@
 language: go
 go: 1.11.x
-go_import_path: github.com/ciehanski/onionbox
 os: linux
 dist: xenial
 sudo: false

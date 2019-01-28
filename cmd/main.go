@@ -9,11 +9,11 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/ciehanski/onionbox/onionbox"
+	"github.com/ciehanski/onionbox/onionbuffer"
 	"github.com/cretz/bine/tor"
 	"github.com/ipsn/go-libtor"
 	"github.com/natefinch/lumberjack"
-	"onionbox/onionbox"
-	"onionbox/onionbuffer"
 )
 
 func main() {

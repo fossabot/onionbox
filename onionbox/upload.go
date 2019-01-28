@@ -13,8 +13,8 @@ import (
 	"syscall"
 
 	"github.com/Pallinder/go-randomdata"
-	"onionbox/onionbuffer"
-	"onionbox/templates"
+	"github.com/ciehanski/onionbox/onionbuffer"
+	"github.com/ciehanski/onionbox/templates"
 )
 
 func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {

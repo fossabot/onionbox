@@ -1,5 +1,6 @@
 language: go
 go: 1.11.x
+go_import_path: github.com/ciehanski/onionbox
 os: linux
 dist: xenial
 sudo: false
@@ -51,7 +52,8 @@ matrix:
   allow_failures:
     - env: BINARY=android-arm64.aar
 
-before_script: go get -u -a -v -x github.com/ipsn/go-libtor
+before_script:
+  - go get -u -a -v -x github.com/ipsn/go-libtor
 
 script:
   - CGO_ENABLED=1 GO111MODULE=on go build -gcflags=-m -a -tags netgo -ldflags '-w -extldflags "-static"' -o onionbox-${BINARY} .
@@ -60,7 +62,8 @@ script:
 deploy:
   provider: releases
   api_key: "${GITHUB_PAT}"
-  file: "onionbox-${BINARY}"
+  file:
+    - "onionbox-${BINARY}"
   skip_cleanup: true
   draft: true
   on:

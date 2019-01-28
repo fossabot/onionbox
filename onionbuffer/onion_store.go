@@ -1,4 +1,4 @@
-package onion_buffer
+package onionbuffer
 
 import (
 	"runtime"
@@ -15,13 +15,13 @@ func NewStore() *OnionStore {
 	return &OnionStore{BufferFiles: make([]*OnionBuffer, 0)}
 }
 
-func (s *OnionStore) Add(oBuffer *OnionBuffer) error {
-	oBuffer.Lock()
-	s.BufferFiles = append(s.BufferFiles, oBuffer)
-	if err := syscall.Mlock(oBuffer.Bytes); err != nil {
+func (s *OnionStore) Add(b *OnionBuffer) error {
+	b.Lock()
+	defer b.Unlock()
+	s.BufferFiles = append(s.BufferFiles, b)
+	if err := syscall.Mlock(b.Bytes); err != nil {
 		return err
 	}
-	oBuffer.Unlock()
 	return nil
 }
 
@@ -34,9 +34,9 @@ func (s *OnionStore) Get(bufName string) *OnionBuffer {
 	return nil
 }
 
-func (s *OnionStore) Destroy(oBuffer *OnionBuffer) error {
+func (s *OnionStore) Destroy(b *OnionBuffer) error {
 	for i, f := range s.BufferFiles {
-		if f.Name == oBuffer.Name {
+		if f.Name == b.Name {
 			if err := f.Destroy(); err != nil {
 				return err
 			}

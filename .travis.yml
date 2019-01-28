@@ -3,9 +3,6 @@ go: 1.11.x
 os: linux
 dist: xenial
 sudo: false
-cache:
-  directories:
-    - ${TRAVIS_HOME}/gopath/src/github.com/ipsn/go-libtor
 
 matrix:
   include:
@@ -32,14 +29,17 @@ matrix:
     - name: linux-386
       env: GO111MODULE=on GOOS=linux GOARCH=386 BINARY=linux-386
     - name: android
-      env: CGO_ENABLED=1 GO111MODULE=on
+      env: CGO_ENABLED=1 GO111MODULE=on BINARY=android-arm64.aar
       install:
         - sudo apt update && sudo apt install android-sdk
-        - sdkmanager ndk-bundle
+        - mkdir ~/ndk && cd ~/ndk
+        - wget -c https://dl.google.com/android/repository/android-ndk-r19-linux-x86_64.zip
+        - unzip android-ndk-r19-linux-x86_64.zip
+        - export PATH=$PATH:~/ndk/android-ndk-r19-linux-x86_64
         - go get -u -a -v -x github.com/ipsn/go-libtor
         - go get golang.org/x/mobile/cmd/gomobile
         - gomobile init
-      before_script: gomobile bind -v -x -target=android -o ./onionbox-android.aar .
+      before_script: gomobile bind -v -x -target=android -o android-arm64.aar .
 
 install: go get -u -a -v -x github.com/ipsn/go-libtor
 

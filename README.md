@@ -32,17 +32,13 @@ doesn't help with build time much, either.
 ## TODO:
 - [ ] Implement tests
 - [x] Use flags for config options
-- [x] Serve files from buffer instead of disk
-- [x] Implement download limits  
-- [x] Implement password protected files
-- [x] Implement checksums
 - [x] Static build
 - [x] Docker build
 - [ ] Get docker-compose working with a dnscrypt-proxy. Maybe overkill or moot
 but sounds cool as hell, right?
-- [ ] Windows support
+- [ ] Windows support (needs testing)
 - [x] ARM support
-- [x] Android support
+- [ ] Android support (build almost working)
 
 ## Shoutouts:
 

@@ -40,7 +40,7 @@ matrix:
         - sudo apt update && sudo apt install android-sdk
         - mkdir ~/ndk && cd ~/ndk
         - wget -c https://dl.google.com/android/repository/android-ndk-r19-linux-x86_64.zip
-        - unzip android-ndk-r19-linux-x86_64.zip
+        - unzip -qq android-ndk-r19-linux-x86_64.zip
         - export PATH=$PATH:~/ndk/android-ndk-r19-linux-x86_64
         - go get -u -a -v -x github.com/ipsn/go-libtor
         - go get golang.org/x/mobile/cmd/gomobile
@@ -58,7 +58,7 @@ before_script:
 
 script:
   - go test -v -race -bench -cpu=1,2,4 ./...
-  - cd cmd && CGO_ENABLED=1 GO111MODULE=on go build -gcflags=-m -a -tags netgo -ldflags '-w -extldflags "-static"' -o ../onionbox-${BINARY} .
+  - cd cmd && CGO_ENABLED=1 GO111MODULE=on go build -a -installsuffix cgo -ldflags '-s' -o onionbox-${BINARY} ../
 
 deploy:
   provider: releases

@@ -1,5 +1,6 @@
 FROM golang:1.11.5
-#COPY . /onionbox
+COPY . /onionbox
+WORKDIR /onionbox
 #WORKDIR /onionbox/cmd
 RUN go get github.com/cespare/reflex
 RUN go get -u -a -v -x github.com/ipsn/go-libtor

@@ -34,7 +34,7 @@ matrix:
     - name: linux-386
       env: GOOS=linux GOARCH=386 BINARY=linux-386
     - name: android
-      env: CGO_ENABLED=1 BINARY=android-arm64.aar
+      env: CGO_ENABLED=1 GOOS=android GOARCH=arm64 BINARY=android-arm64.aar
       before_script:
         - export GOPATH=
         - sudo apt update && sudo apt install android-sdk
@@ -58,13 +58,13 @@ before_script:
 
 script:
   - go test -v -race -bench -cpu=1,2,4 ./...
-  - cd cmd && CGO_ENABLED=1 GO111MODULE=on go build -a -installsuffix cgo -ldflags '-s' -o onionbox-${BINARY} ../
+  - cd cmd && CGO_ENABLED=1 GO111MODULE=on go build -a -installsuffix cgo -ldflags '-s' -o onionbox-${BINARY} .
 
 deploy:
   provider: releases
   api_key: "${GITHUB_PAT}"
   file:
-    - "${TRAVIS_BUILD_DIR}/onionbox-${BINARY}"
+    - "${TRAVIS_BUILD_DIR}/cmd/onionbox-${BINARY}"
   skip_cleanup: true
   draft: true
   on:

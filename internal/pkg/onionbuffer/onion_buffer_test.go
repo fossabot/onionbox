@@ -3,7 +3,6 @@ package onionbuffer
 import (
 	"archive/zip"
 	"bytes"
-	"os"
 	"testing"
 )
 
@@ -97,10 +96,10 @@ func BenchmarkWriteBytesInChunks(b *testing.B) {
 	}
 }
 
-func mustOpen(f string) *os.File {
-	r, err := os.Open(f)
-	if err != nil {
-		panic(err)
-	}
-	return r
-}
+//func mustOpen(f string) *os.File {
+//	r, err := os.Open(f)
+//	if err != nil {
+//		panic(err)
+//	}
+//	return r
+//}

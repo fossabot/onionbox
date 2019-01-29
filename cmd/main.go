@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -17,31 +18,36 @@ import (
 )
 
 func main() {
-	// Create onionbox instance that stores config
-	ob := &onionbox.Onionbox{
+	ob := &onionbox.Onionbox{ // Create onionbox instance that stores config
 		Version: "v0.1.0",
 		Logger:  log.New(os.Stdout, "[onionbox] ", log.LstdFlags),
 		Store:   onionbuffer.NewStore(),
 	}
+
 	// Init flags
 	flag.BoolVar(&ob.Debug, "debug", false, "run in debug mode")
 	flag.BoolVar(&ob.TorVersion3, "torv3", true, "use version 3 of the Tor circuit")
-	flag.Int64Var(&ob.MaxFormMemory, "mem", 512, "max memory allotted for handling form file buffers")
+	flag.Int64Var(&ob.MaxFormMemory, "mem", 512, "max memory (mb) allotted for handling form file buffers")
 	flag.Int64Var(&ob.ChunkSize, "chunks", 1024, "size of chunks for buffer I/O")
 	flag.IntVar(&ob.Port, "port", 80, "port to expose the onion service on")
-	// Parse flags
 	flag.Parse()
 
 	// If debug is NOT enabled, write all logs to disk (instead of stdout)
 	// and rotate them when necessary.
+	var torLog io.Writer
 	if !ob.Debug {
-		ob.Logger.SetOutput(&lumberjack.Logger{
+		lj := &lumberjack.Logger{
 			Filename:   "/var/log/onionbox/onionbox.log",
 			MaxSize:    100, // megabytes
 			MaxBackups: 3,
 			MaxAge:     28, // days
 			Compress:   true,
-		})
+		}
+		ob.Logger.SetOutput(lj)
+		torLog = lj
+	} else {
+		ob.Logger.SetOutput(os.Stdout)
+		torLog = os.Stderr
 	}
 
 	// Create a separate go routine which infinitely loops through the store to check for
@@ -52,28 +58,19 @@ func main() {
 		}
 	}()
 
-	// Get running OS
-	var embedCon bool
-	if runtime.GOOS == "windows" {
-		embedCon = false
-	} else {
-		embedCon = true
-	}
-
-	// Start tor
 	ob.Logf("Starting and registering onion service, please wait...")
-	t, err := tor.Start(nil, &tor.StartConf{
-		ProcessCreator: libtor.Creator,
-		DebugWriter:    os.Stderr,
-		// This option is not supported on Windows
-		UseEmbeddedControlConn: embedCon,
+	embedCon := runtime.GOOS != "windows"    //get running OS
+	t, err := tor.Start(nil, &tor.StartConf{ // Start tor
+		ProcessCreator:         libtor.Creator,
+		DebugWriter:            torLog,
+		UseEmbeddedControlConn: embedCon, // This option is not supported on Windows
 	})
 	if err != nil {
 		ob.Logf("Failed to start Tor: %v", err)
 		ob.Quit()
 	}
 	defer func() {
-		if err := t.Close(); err != nil {
+		if err = t.Close(); err != nil {
 			ob.Logf("Error closing connection to Tor: %v", err)
 			ob.Quit()
 		}
@@ -89,11 +86,11 @@ func main() {
 		Version3:    ob.TorVersion3,
 	})
 	if err != nil {
-		ob.Logf("Error creating the onion service: %v", err)
+		ob.Logf("Error initializing onion service: %v", err)
 		ob.Quit()
 	}
 	defer func() {
-		if err := onionSvc.Close(); err != nil {
+		if err = onionSvc.Close(); err != nil {
 			ob.Logf("Error closing connection to onion service: %v", err)
 			ob.Quit()
 		}
@@ -109,11 +106,12 @@ func main() {
 		// TODO: comeback. Tor is quite slow and depending on the size of the files being
 		//  transferred, the server could timeout. I would like to keep set timeouts, but
 		//  will need to find a sweet spot or enable an option for large transfers.
-		IdleTimeout:  time.Second * 60,
-		ReadTimeout:  time.Minute * 5,
-		WriteTimeout: time.Minute * 10,
+		IdleTimeout:  time.Minute * 3,
+		ReadTimeout:  time.Minute * 3,
+		WriteTimeout: time.Minute * 3,
 		Handler:      nil,
 	}
+
 	// Begin serving
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(onionSvc) }()
@@ -121,10 +119,10 @@ func main() {
 		ob.Logf("Error serving on onion service: %v", err)
 		ob.Quit()
 	}
-	// Proper server shutdown when program ends
-	defer func() {
-		if err := srv.Shutdown(context.Background()); err != nil {
-			ob.Logf("Error shutting down onionbox: %v", err)
+
+	defer func() { // Proper server shutdown when program ends
+		if err = srv.Shutdown(context.Background()); err != nil {
+			ob.Logf("Error shutting down onionbox server: %v", err)
 			ob.Quit()
 		}
 	}()

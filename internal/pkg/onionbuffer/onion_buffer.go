@@ -37,11 +37,10 @@ func (b *OnionBuffer) Destroy() error {
 	zWriter := zip.NewWriter(buffer)
 	reader := bufio.NewReader(bytes.NewReader(b.Bytes))
 	chunk := make([]byte, 1)
-	// Lock memory allotted to chunk from being used in SWAP
-	if err := syscall.Mlock(chunk); err != nil {
+	bufFile, err := zWriter.Create(b.Name)
+	if err != nil {
 		return err
 	}
-	bufFile, _ := zWriter.Create(b.Name)
 	for {
 		if _, err = reader.Read(chunk); err != nil {
 			break
@@ -56,7 +55,7 @@ func (b *OnionBuffer) Destroy() error {
 	} else {
 		err = nil
 	}
-	if err := syscall.Munlock(b.Bytes); err != nil {
+	if err := syscall.Munlock(b.Bytes); err != nil { // Unlock memory allotted to chunk to be used for SWAP
 		return err
 	}
 	return nil
@@ -88,57 +87,52 @@ func (b *OnionBuffer) SetExpiration(expiration string) error {
 	return nil
 }
 
-func WriteFilesToBuffers(w *zip.Writer, uploadQueue <-chan *multipart.FileHeader, wg sync.WaitGroup, chunkSize int64) error {
-	for {
-		select {
-		case fileHeader := <-uploadQueue:
-			// Open uploaded file
-			file, err := fileHeader.Open()
-			if err != nil {
-				return err
-			}
-			// Create file in zip with same name
-			zBuffer, err := w.Create(fileHeader.Filename)
-			if err != nil {
-				return err
-			}
-			// Read uploaded file
-			if err := writeBytesByChunk(file, zBuffer, chunkSize); err != nil {
-				return err
-			}
-			// Flush zipwriter to write compressed bytes to buffer
-			// before moving onto the next file
-			if err := w.Flush(); err != nil {
-				return err
-			}
-			wg.Done()
+func WriteFilesToBuffers(w *zip.Writer, files []*multipart.FileHeader, wg *sync.WaitGroup, chunkSize int64) error {
+	for _, fileHeader := range files {
+		file, err := fileHeader.Open() // Open uploaded file
+		if err != nil {
+			return err
 		}
+
+		zBuffer, err := w.Create(fileHeader.Filename) // Create file in zip with same name
+		if err != nil {
+			return err
+		}
+
+		if err := writeBytesByChunk(file, zBuffer, chunkSize); err != nil { // Write file in chunks to zBuffer
+			return err
+		}
+		// Flush zipwriter to write compressed bytes to buffer
+		// before moving onto the next file
+		if err := w.Flush(); err != nil {
+			return err
+		}
+		wg.Done() // Signal to work group this file is done uploading
 	}
+	return nil
 }
 
 func writeBytesByChunk(file io.Reader, bufWriter io.Writer, chunkSize int64) error {
-	// Read uploaded file
 	var count int
 	var err error
-	reader := bufio.NewReader(file)
+	reader := bufio.NewReader(file) // Read uploaded file
 	chunk := make([]byte, chunkSize)
-	// Lock memory allotted to chunk from being used in SWAP
-	if err := syscall.Mlock(chunk); err != nil {
-		return err
-	}
 	for {
-		if count, err = reader.Read(chunk); err != nil {
+		if count, err = reader.Read(chunk); err != nil { // Read the specific chunk of uploaded file
 			break
 		}
-		_, err := bufWriter.Write(chunk[:count])
+		_, err := bufWriter.Write(chunk[:count]) // Write the specific chunk to the new zip entry
 		if err != nil {
 			return err
 		}
 	}
-	if err != io.EOF {
+	if err != io.EOF { // If not EOF, return the err
 		return err
-	} else {
+	} else { // if EOF, do not return an error
 		err = nil
+	}
+	if err := syscall.Mlock(chunk); err != nil { // Lock memory allotted to chunk from being used in SWAP
+		return err
 	}
 	return nil
 }

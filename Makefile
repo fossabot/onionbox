@@ -1,12 +1,12 @@
-run: # Rebuild the docker container
+run: # Run the docker container
 	docker build -t onionbox_image . && \
 	docker run --name onionbox -p 80 onionbox_image
-stop:
+stop: # Stop the docker container
 	docker stop onionbox && \
-	docker rmi onionbox_image && \
-	docker container rm onionbox
-restart: stop run
-exec:
+	docker rmi -f onionbox_image && \
+	docker container rm -f onionbox
+restart: stop run # Rebuilds the docker container
+exec: # Open a bash shell into the docker container
 	docker exec -it onionbox bash
 lint: # Will lint the project
 	golint

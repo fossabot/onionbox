@@ -21,15 +21,15 @@ func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Error displaying web page, please try refreshing.", http.StatusInternalServerError)
 				return
 			}
-			// Parse template
-			t, err := template.New("download_encrypted").Parse(templates.DownloadHTML)
+
+			t, err := template.New("download_encrypted").Parse(templates.DownloadHTML) // Parse template
 			if err != nil {
 				ob.Logf("Error loading template: %v", err)
 				http.Error(w, "Error displaying web page, please try refreshing.", http.StatusInternalServerError)
 				return
 			}
-			// Execute template
-			if err := t.Execute(w, csrf); err != nil {
+
+			if err := t.Execute(w, csrf); err != nil { // Execute template
 				ob.Logf("Error executing template: %v", err)
 				http.Error(w, "Error displaying web page, please try refreshing.", http.StatusInternalServerError)
 				return
@@ -43,8 +43,8 @@ func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Download limit reached.", http.StatusUnauthorized)
 				return
 			}
-			// Validate checksum
-			chksmValid, err := oBuffer.ValidateChecksum()
+
+			chksmValid, err := oBuffer.ValidateChecksum() // Validate checksum
 			if err != nil {
 				ob.Logf("Error validating checksum: %v", err)
 				http.Error(w, "Error validating checksum.", http.StatusInternalServerError)
@@ -59,7 +59,7 @@ func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
 			oBuffer.Downloads++
 			// Check download amount
 			if oBuffer.Downloads >= oBuffer.DownloadLimit {
-				if err := oBuffer.Destroy(); err != nil {
+				if err := ob.Store.Destroy(oBuffer); err != nil {
 					ob.Logf("Error destroying buffer %s: %v", oBuffer.Name, err)
 				}
 			}

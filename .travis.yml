@@ -36,7 +36,6 @@ matrix:
     - name: android
       env: CGO_ENABLED=1 GOOS=android GOARCH=arm64 BINARY=android-arm64.aar
       before_script:
-        - export GOPATH=
         - sudo apt update && sudo apt install android-sdk
         - mkdir ~/ndk && cd ~/ndk
         - wget -q -c https://dl.google.com/android/repository/android-ndk-r19-linux-x86_64.zip

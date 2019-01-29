@@ -59,11 +59,12 @@ func main() {
 	}()
 
 	ob.Logf("Starting and registering onion service, please wait...")
-	embedCon := runtime.GOOS != "windows"    //get running OS
 	t, err := tor.Start(nil, &tor.StartConf{ // Start tor
 		ProcessCreator:         libtor.Creator,
 		DebugWriter:            torLog,
-		UseEmbeddedControlConn: embedCon, // This option is not supported on Windows
+		UseEmbeddedControlConn: runtime.GOOS != "windows", // This option is not supported on Windows
+		TempDataDirBase:        "/tmp",
+		RetainTempDataDir:      false,
 	})
 	if err != nil {
 		ob.Logf("Failed to start Tor: %v", err)
@@ -98,7 +99,7 @@ func main() {
 
 	// Display the onion service URL
 	ob.OnionURL = onionSvc.ID
-	ob.Logf("Please open a Tor capable browser and navigate to http://%v.onion\n", ob.OnionURL)
+	log.Printf("Please open a Tor capable browser and navigate to http://%v.onion\n", ob.OnionURL)
 
 	// Init serving
 	http.HandleFunc("/", ob.Router)

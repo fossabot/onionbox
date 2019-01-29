@@ -20,28 +20,24 @@ but the sender is not technically-savvy, you yourself can run an onionbox server
 generated .onion URL and have them upload the files directly for you to download.
 - Can be run in a Docker container, or locally on your host machine. You could
 of course deploy onionbox to any cloud provider of your choosing.
-- Static binary! Woo! ~~Possible ARM support~~. Android is supported!
-
-## Gotchas:
-- There is no getting around it, this project takes a little over 10 minutes to
-build. However, this will not be an issue for end users once we have the binaries
-released. Docker builds will still require a long build time. This is because go-libtor
-creates a completely statically linked Tor lib before build. The dependency on net 
-doesn't help with build time much, either.
+- Static binary! Woo!
 
 ## TODO:
 - [ ] Implement tests
-- [x] Use flags for config options
-- [x] Static build
-- [x] Docker build
-- [ ] Get docker-compose working with a dnscrypt-proxy. Maybe overkill or moot
+- [x] Get docker-compose working with a dnscrypt-proxy. Maybe overkill or moot
 but sounds cool as hell, right?
 - [ ] Windows support (needs testing)
 - [x] ARM support
 - [ ] Android support (build almost working)
 
-## Shoutouts:
+## Contributing:
+There is no getting around it, this project takes a little over 10 minutes to
+build. However, this will not be an issue for end users once we have the binaries
+released. Docker builds will still require a long build time. This is because go-libtor
+creates a completely statically linked Tor lib before build. The dependency on net 
+doesn't help with build time much, either.
 
+## Shoutouts:
 Huge shoutout to [@karalabe](https://github.com/karalabe), the creator of [go-libtor](https://github.com/ipsn/go-libtor) which enables the 
 creation of a Go-friendly static Tor lib which utilizes [bine](https://github.com/cretz/bine) (created by [@cretz](https://github.com/cretz))
 to interface with the Tor API. Big thanks to these guys or this project would not be possible.

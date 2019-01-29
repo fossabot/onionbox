@@ -16,8 +16,7 @@ func (b *OnionBuffer) GetChecksum() (string, error) {
 	hash := md5.New()
 	reader := bufio.NewReader(bytes.NewReader(b.Bytes))
 	chunk := make([]byte, b.ChunkSize)
-	// Lock memory allotted to chunk from being used in SWAP
-	if err := syscall.Mlock(chunk); err != nil {
+	if err := syscall.Mlock(chunk); err != nil { // Lock memory allotted to chunk from being used in SWAP
 		return "", err
 	}
 	for {

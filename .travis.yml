@@ -57,14 +57,14 @@ before_script:
   - go get -u -a -v -x github.com/ipsn/go-libtor
 
 script:
-  - CGO_ENABLED=1 GO111MODULE=on go build -gcflags=-m -a -tags netgo -ldflags '-w -extldflags "-static"' -o onionbox-${BINARY} .
   - go test -v -race -bench -cpu=1,2,4 ./...
+  - cd cmd && CGO_ENABLED=1 GO111MODULE=on go build -gcflags=-m -a -tags netgo -ldflags '-w -extldflags "-static"' -o ../onionbox-${BINARY} .
 
 deploy:
   provider: releases
   api_key: "${GITHUB_PAT}"
   file:
-    - "onionbox-${BINARY}"
+    - "${TRAVIS_BUILD_DIR}/onionbox-${BINARY}"
   skip_cleanup: true
   draft: true
   on:

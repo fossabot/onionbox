@@ -1,7 +1,5 @@
 language: go
-go:
-  - "1.11.x"
-  - master
+go: 1.11.x
 os: linux
 dist: xenial
 sudo: false
@@ -47,7 +45,7 @@ matrix:
         - gomobile init -ndk ndk/android-ndk-r19-linux-x86_64
       script:
         - go test -v -race -bench -cpu=1,2,4 ./...
-        - gomobile bind -v -x -target=android -o android-arm64.aar .
+        - gomobile bind -v -x -target=android -o onionbox-${TRAVIS_TAG}-${BINARY} .
   fast_finish: true
   allow_failures:
     - env: CGO_ENABLED=1 GOOS=android GOARCH=arm64 BINARY=android-arm64.aar

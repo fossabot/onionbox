@@ -1,5 +1,7 @@
 language: go
-go: 1.11.x
+go:
+  - "1.11.x"
+  - master
 os: linux
 dist: xenial
 sudo: false
@@ -37,17 +39,18 @@ matrix:
       env: CGO_ENABLED=1 GOOS=android GOARCH=arm64 BINARY=android-arm64.aar
       before_script:
         - sudo apt update && sudo apt install android-sdk
-        - mkdir ndk && wget -q -c https://dl.google.com/android/repository/android-ndk-r19-linux-x86_64.zip -P ndk
+        - mkdir ndk
+        - wget -q -c https://dl.google.com/android/repository/android-ndk-r19-linux-x86_64.zip -P ndk
         - cd ndk && unzip -qq android-ndk-r19-linux-x86_64.zip && cd -
         - go get -u -a -v -x github.com/ipsn/go-libtor
         - go get golang.org/x/mobile/cmd/gomobile
-        - gomobile init -ndk=ndk
+        - gomobile init -ndk ndk/android-ndk-r19-linux-x86_64
       script:
         - go test -v -race -bench -cpu=1,2,4 ./...
         - gomobile bind -v -x -target=android -o android-arm64.aar .
   fast_finish: true
   allow_failures:
-    - env: BINARY=android-arm64.aar
+    - env: CGO_ENABLED=1 GOOS=android GOARCH=arm64 BINARY=android-arm64.aar
 
 before_script:
   - export GOPATH=
@@ -55,14 +58,15 @@ before_script:
 
 script:
   - go test -v -race -bench -cpu=1,2,4 ./...
-  - cd cmd && CGO_ENABLED=1 GO111MODULE=on go build -a -installsuffix cgo -ldflags '-s' -o onionbox-${BINARY} .
+  - cd cmd && CGO_ENABLED=1 GO111MODULE=on go build -a -installsuffix cgo -ldflags '-s' -o onionbox-${TRAVIS_TAG}-${BINARY} .
 
 deploy:
   provider: releases
   api_key: "${GITHUB_PAT}"
   file:
-    - "${TRAVIS_BUILD_DIR}/cmd/onionbox-${BINARY}"
+    - "${TRAVIS_BUILD_DIR}/cmd/onionbox-${TRAVIS_TAG}-${BINARY}"
   skip_cleanup: true
   draft: true
   on:
+    repo: ciehanski/onionbox
     tags: true

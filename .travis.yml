@@ -36,7 +36,7 @@ matrix:
     - name: android
       env: CGO_ENABLED=1 GOOS=android GOARCH=arm64 BINARY=android-arm64.aar
       before_script:
-        - apt update && apt-get install default-jdk android-sdk
+        - sudo apt update && sudo apt-get install default-jdk android-sdk
         - mkdir ndk && wget -q -c https://dl.google.com/android/repository/android-ndk-r19-linux-x86_64.zip
         - unzip -qq -d ndk android-ndk-r19-linux-x86_64.zip
         - sdkmanager ndk-bundle

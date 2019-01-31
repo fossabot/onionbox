@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/md5"
+	"crypto/subtle"
 	"encoding/hex"
 	"io"
 	"syscall"
@@ -43,8 +44,5 @@ func (b *OnionBuffer) ValidateChecksum() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if b.Checksum == chksm {
-		return true, nil
-	}
-	return false, nil
+	return subtle.ConstantTimeCompare([]byte(b.Checksum), []byte(chksm)) == 1, nil
 }

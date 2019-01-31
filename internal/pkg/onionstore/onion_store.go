@@ -1,50 +1,58 @@
-package onionbuffer
+package onionstore
 
 import (
+	"crypto/subtle"
 	"runtime"
-	"syscall"
 	"time"
+
+	"github.com/ciehanski/onionbox/internal/pkg/onionbuffer"
+	"golang.org/x/sys/unix"
 )
 
 type OnionStore struct {
-	BufferFiles []*OnionBuffer
+	BufferFiles []*onionbuffer.OnionBuffer
 }
 
 // Used to create a nil store.
 func NewStore() *OnionStore {
-	return &OnionStore{BufferFiles: make([]*OnionBuffer, 0)}
+	return &OnionStore{BufferFiles: make([]*onionbuffer.OnionBuffer, 0)}
 }
 
-func (s *OnionStore) Add(b *OnionBuffer) error {
+func (s *OnionStore) Add(b *onionbuffer.OnionBuffer) error {
 	b.Lock()
 	defer b.Unlock()
 	s.BufferFiles = append(s.BufferFiles, b)
-	if err := syscall.Mlock(b.Bytes); err != nil {
+	// Advise the kernel not to dump. Ignore failure.
+	// Unable to reference unix.MADV_DONTDUMP, raw value is 0x10 per:
+	// https://godoc.org/golang.org/x/sys/unix
+	unix.Madvise(b.Bytes, 0x10)
+	// Lock bytes from SWAP
+	if err := b.Mlock(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *OnionStore) Get(bufName string) *OnionBuffer {
+func (s *OnionStore) Get(bufName string) *onionbuffer.OnionBuffer {
 	for _, f := range s.BufferFiles {
-		if f.Name == bufName {
+		if subtle.ConstantTimeCompare([]byte(f.Name), []byte(bufName)) == 1 {
 			return f
 		}
 	}
 	return nil
 }
 
-func (s *OnionStore) Destroy(b *OnionBuffer) error {
+func (s *OnionStore) Destroy(b *onionbuffer.OnionBuffer) error {
 	for i, f := range s.BufferFiles {
-		if f.Name == b.Name {
-			if err := f.Destroy(); err != nil {
+		if subtle.ConstantTimeCompare([]byte(f.Name), []byte(b.Name)) == 1 {
+			if err := b.Destroy(); err != nil {
 				return err
 			}
 			// Remove from s
 			f.Lock()
 			s.BufferFiles = append(s.BufferFiles[:i], s.BufferFiles[i+1:]...)
 			// Free niled allotted memory for SWAP usage
-			if err := syscall.Munlock(f.Bytes); err != nil {
+			if err := f.Munlock(); err != nil {
 				return err
 			}
 			f.Unlock()
@@ -55,7 +63,7 @@ func (s *OnionStore) Destroy(b *OnionBuffer) error {
 
 func (s *OnionStore) Exists(bufName string) bool {
 	for _, f := range s.BufferFiles {
-		if f.Name == bufName {
+		if subtle.ConstantTimeCompare([]byte(f.Name), []byte(bufName)) == 1 {
 			return true
 		}
 	}
@@ -70,7 +78,7 @@ func (s *OnionStore) DestroyAll() error {
 			}
 			f.Lock()
 			s.BufferFiles = append(s.BufferFiles[:i], s.BufferFiles[i+1:]...)
-			if err := syscall.Munlock(f.Bytes); err != nil {
+			if err := f.Munlock(); err != nil {
 				return err
 			}
 			f.Unlock()

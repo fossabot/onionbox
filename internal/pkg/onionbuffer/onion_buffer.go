@@ -6,14 +6,17 @@ import (
 	"bytes"
 	"io"
 	"mime/multipart"
+	"runtime"
 	"sync"
-	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // OnionBuffer struct
 type OnionBuffer struct {
 	sync.RWMutex
+
 	Name             string
 	Bytes            []byte
 	Checksum         string
@@ -55,7 +58,7 @@ func (b *OnionBuffer) Destroy() error {
 	} else {
 		err = nil
 	}
-	if err := syscall.Munlock(b.Bytes); err != nil { // Unlock memory allotted to chunk to be used for SWAP
+	if err := b.Munlock(); err != nil {
 		return err
 	}
 	return nil
@@ -87,36 +90,41 @@ func (b *OnionBuffer) SetExpiration(expiration string) error {
 	return nil
 }
 
-func WriteFilesToBuffers(w *zip.Writer, files []*multipart.FileHeader, wg *sync.WaitGroup, chunkSize int64) error {
-	for _, fileHeader := range files {
-		file, err := fileHeader.Open() // Open uploaded file
-		if err != nil {
-			return err
-		}
+func WriteFilesToBuffers(w *zip.Writer, files chan *multipart.FileHeader, wg *sync.WaitGroup, chunkSize int64) error {
+	for {
+		select {
+		case fileHeader := <-files:
+			file, err := fileHeader.Open() // Open uploaded file
+			if err != nil {
+				return err
+			}
 
-		zBuffer, err := w.Create(fileHeader.Filename) // Create file in zip with same name
-		if err != nil {
-			return err
-		}
+			zBuffer, err := w.Create(fileHeader.Filename) // Create file in zip with same name
+			if err != nil {
+				return err
+			}
 
-		if err := writeBytesByChunk(file, zBuffer, chunkSize); err != nil { // Write file in chunks to zBuffer
-			return err
+			if err := writeBytesByChunk(file, zBuffer, chunkSize); err != nil { // Write file in chunks to zBuffer
+				return err
+			}
+			// Flush zipwriter to write compressed bytes to buffer
+			// before moving onto the next file
+			if err := w.Flush(); err != nil {
+				return err
+			}
+			wg.Done() // Signal to work group this file is done uploading
 		}
-		// Flush zipwriter to write compressed bytes to buffer
-		// before moving onto the next file
-		if err := w.Flush(); err != nil {
-			return err
-		}
-		wg.Done() // Signal to work group this file is done uploading
 	}
-	return nil
 }
 
 func writeBytesByChunk(file io.Reader, bufWriter io.Writer, chunkSize int64) error {
 	var count int
 	var err error
 	reader := bufio.NewReader(file) // Read uploaded file
-	chunk := make([]byte, chunkSize)
+	chunk, err := Allocate(int(chunkSize))
+	if err != nil {
+		return err
+	}
 	for {
 		if count, err = reader.Read(chunk); err != nil { // Read the specific chunk of uploaded file
 			break
@@ -131,7 +139,58 @@ func writeBytesByChunk(file io.Reader, bufWriter io.Writer, chunkSize int64) err
 	} else { // if EOF, do not return an error
 		err = nil
 	}
-	if err := syscall.Mlock(chunk); err != nil { // Lock memory allotted to chunk from being used in SWAP
+	// TODO: replace
+	// Advise the kernel not to dump. Ignore failure.
+	// Unable to reference unix.MADV_DONTDUMP, raw value is 0x10 per:
+	// https://godoc.org/golang.org/x/sys/unix
+	unix.Madvise(chunk, 0x10)
+	if err := unix.Mlock(chunk); err != nil { // Lock memory allotted to chunk from being used in SWAP
+		return err
+	}
+	return nil
+}
+
+func (b *OnionBuffer) Mlock() error {
+	if runtime.GOOS != "windows" {
+		// Advise the kernel not to dump. Ignore failure.
+		// Unable to reference unix.MADV_DONTDUMP, raw value is 0x10 per:
+		// https://godoc.org/golang.org/x/sys/unix
+		unix.Madvise(b.Bytes, 0x10)
+		if err := unix.Mlock(b.Bytes); err != nil { // Lock memory allotted to chunk from being used in SWAP
+			return err
+		}
+	} else {
+		// Do windows stuff
+	}
+	return nil
+}
+
+func (b *OnionBuffer) Munlock() error {
+	if runtime.GOOS != "windows" {
+		if err := unix.Munlock(b.Bytes); err != nil { // Unlock memory allotted to chunk to be used for SWAP
+			return err
+		}
+		if err := Unallocate(b.Bytes); err != nil {
+			// TODO: causes error
+			return err
+		}
+	} else {
+		// Do windows stuff
+	}
+	return nil
+}
+
+func Allocate(length int) ([]byte, error) {
+	b, err := unix.Mmap(-1, 0, length, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANONYMOUS)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func Unallocate(bytes []byte) error {
+	if err := unix.Munmap(bytes); err != nil {
+		// TODO: causes error
 		return err
 	}
 	return nil

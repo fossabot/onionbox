@@ -1,6 +1,7 @@
 package onionbox
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -10,10 +11,15 @@ import (
 	"github.com/ciehanski/onionbox/internal/pkg/templates"
 )
 
-func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
+func (ob Onionbox) download(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		oBuffer := ob.Store.Get(r.Header.Get("filename"))
+		oBuffer := ob.Store.Get(r.URL.Path[1:])
+		if oBuffer == nil {
+			ob.Logf("File %s not found in store", oBuffer.Name)
+			http.Error(w, "Error finding requested file.", http.StatusInternalServerError)
+			return
+		}
 		if oBuffer.Encrypted {
 			csrf, err := createCSRF()
 			if err != nil {
@@ -21,6 +27,12 @@ func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Error displaying web page, please try refreshing.", http.StatusInternalServerError)
 				return
 			}
+
+			// Set CSRF cookie
+			http.SetCookie(w, &http.Cookie{
+				Name:  cookieCSRF,
+				Value: csrf,
+			})
 
 			t, err := template.New("download_encrypted").Parse(templates.DownloadHTML) // Parse template
 			if err != nil {
@@ -35,15 +47,19 @@ func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		} else {
-			if oBuffer.DownloadLimit > 0 && oBuffer.Downloads >= oBuffer.DownloadLimit {
-				if err := ob.Store.Destroy(oBuffer); err != nil {
-					ob.Logf("Error deleting onion file from Store: %v", err)
+			if oBuffer.DownloadLimit != 0 {
+				if oBuffer.Downloads >= oBuffer.DownloadLimit {
+					if err := ob.Store.Destroy(oBuffer); err != nil {
+						ob.Logf("Error deleting onion file from Store: %v", err)
+					}
+					ob.Logf("Download limit reached for %s", oBuffer.Name)
+					http.Error(w, "Download limit reached.", http.StatusUnauthorized)
+					return
+				} else {
+					// Increment files download count
+					oBuffer.Downloads++
 				}
-				ob.Logf("Download limit reached for %s", oBuffer.Name)
-				http.Error(w, "Download limit reached.", http.StatusUnauthorized)
-				return
 			}
-
 			chksmValid, err := oBuffer.ValidateChecksum() // Validate checksum
 			if err != nil {
 				ob.Logf("Error validating checksum: %v", err)
@@ -55,17 +71,9 @@ func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Invalid checksum.", http.StatusInternalServerError)
 				return
 			}
-			// Increment files download count
-			oBuffer.Downloads++
-			// Check download amount
-			if oBuffer.Downloads >= oBuffer.DownloadLimit {
-				if err := ob.Store.Destroy(oBuffer); err != nil {
-					ob.Logf("Error destroying buffer %s: %v", oBuffer.Name, err)
-				}
-			}
 			// Set headers for browser to initiate download
-			w.Header().Set("Content-Type", "application/zip")
 			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.zip", oBuffer.Name))
+			w.Header().Set("Content-Type", "application/zip; charset=utf-8")
 			// Write the zip bytes to the response for download
 			_, err = w.Write(oBuffer.Bytes)
 			if err != nil {
@@ -74,16 +82,46 @@ func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-	// If buffer was password protected
-	case http.MethodPost:
-		oBuffer := ob.Store.Get(r.Header.Get("filename"))
-		if oBuffer.DownloadLimit > 0 && oBuffer.Downloads >= oBuffer.DownloadLimit {
-			if err := ob.Store.Destroy(oBuffer); err != nil {
-				ob.Logf("Error deleting onion file from Store: %v", err)
-			}
-			ob.Logf("Download limit reached for %s", oBuffer.Name)
-			http.Error(w, "Download limit reached.", http.StatusUnauthorized)
+	case http.MethodPost: // If buffer was password protected
+		if err := r.ParseForm(); err != nil {
+			ob.Logf("Error parsing upload form: %v", err)
+			http.Error(w, "Error parsing password form.", http.StatusInternalServerError)
 			return
+		}
+
+		// Check CSRF
+		csrfForm := r.PostFormValue(formCSRF)
+		csrfCookie, err := r.Cookie(cookieCSRF)
+		if err != nil {
+			ob.Logf("Error getting CSRF cookie: %v", err)
+			http.Error(w, "Error getting CSRF.", http.StatusInternalServerError)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(csrfForm), []byte(csrfCookie.Value)) == 0 {
+			ob.Logf("Form CSRF and Cookie CSRF values do not match")
+			http.Error(w, "Invalid CSRF value.", http.StatusUnauthorized)
+			return
+		}
+
+		oBuffer := ob.Store.Get(r.URL.Path[1:])
+		if oBuffer == nil {
+			ob.Logf("File %s not found in store", oBuffer.Name)
+			http.Error(w, "Error finding requested file.", http.StatusInternalServerError)
+			return
+		}
+
+		if oBuffer.DownloadLimit != 0 {
+			if oBuffer.Downloads >= oBuffer.DownloadLimit {
+				if err := ob.Store.Destroy(oBuffer); err != nil {
+					ob.Logf("Error deleting onionbuffer from store: %v", err)
+				}
+				ob.Logf("Download limit reached for %s", oBuffer.Name)
+				http.Error(w, "Download limit reached.", http.StatusUnauthorized)
+				return
+			} else {
+				// Increment files download count
+				oBuffer.Downloads++
+			}
 		}
 		// Validate checksum
 		chksmValid, err := oBuffer.ValidateChecksum()
@@ -109,17 +147,9 @@ func (ob *Onionbox) download(w http.ResponseWriter, r *http.Request) {
 		if err := syscall.Mlock(decryptedBytes); err != nil {
 			ob.Logf("Error mlocking allotted memory for decryptedBytes: %v", err)
 		}
-		// Increment files download count
-		oBuffer.Downloads++
-		// Check download amount
-		if oBuffer.Downloads >= oBuffer.DownloadLimit {
-			if err := ob.Store.Destroy(oBuffer); err != nil {
-				ob.Logf("Error destroying buffer %s: %v", oBuffer.Name, err)
-			}
-		}
 		// Set headers for browser to initiate download
-		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.zip", oBuffer.Name))
+		w.Header().Set("Content-Type", "application/zip; charset=utf-8")
 		// Write the zip bytes to the response for download
 		_, err = w.Write(decryptedBytes)
 		if err != nil {

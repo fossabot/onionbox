@@ -31,11 +31,36 @@ but sounds cool as hell, right?
 - [ ] Android support (build almost working)
 
 ## Contributing:
-There is no getting around it, this project takes a little over 10 minutes to
-build. However, this will not be an issue for end users once we have the binaries
-released. Docker builds will still require a long build time. This is because go-libtor
-creates a completely statically linked Tor lib before build. The dependency on net 
-doesn't help with build time much, either.
+You can get started by either forking or cloning the repo. After, you can get started
+by running:
+
+```bash
+make run
+```
+
+This will go ahead and build everything necessary to interface with Tor. After compose
+has completed building, you will have a new `onionbox` container which will be your
+dev environment.
+
+Anytime a change to a .go or .mod file is detected the container will rerun with
+the changes you have made. You must save in your IDE or text editor for the 
+changes to be picked up. It takes roughly ~35 seconds for onionbox to restart after 
+you have made changes.
+
+You can completely restart the build with:
+```bash
+make restart
+```
+
+Get container logs:
+```bash
+make logs
+```
+
+Shell into docker container:
+```bash
+make exec
+```
 
 ## Shoutouts:
 Huge shoutout to [@karalabe](https://github.com/karalabe), the creator of [go-libtor](https://github.com/ipsn/go-libtor) which enables the 

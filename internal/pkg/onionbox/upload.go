@@ -3,8 +3,10 @@ package onionbox
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/subtle"
 	"fmt"
 	"html/template"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,7 +18,7 @@ import (
 	"github.com/ciehanski/onionbox/internal/pkg/templates"
 )
 
-func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
+func (ob Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		csrf, err := createCSRF() // Create CSRF to inject into template
@@ -25,6 +27,12 @@ func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error displaying web page, please try refreshing.", http.StatusInternalServerError)
 			return
 		}
+
+		// Set CSRF cookie
+		http.SetCookie(w, &http.Cookie{
+			Name:  cookieCSRF,
+			Value: csrf,
+		})
 
 		t, err := template.New("upload").Parse(templates.UploadHTML) // Parse template
 		if err != nil {
@@ -45,23 +53,40 @@ func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Check CSRF
+		csrfForm := r.FormValue(formCSRF)
+		csrfCookie, err := r.Cookie(cookieCSRF)
+		if err != nil {
+			ob.Logf("Error getting CSRF cookie: %v", err)
+			http.Error(w, "Error getting CSRF.", http.StatusInternalServerError)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(csrfForm), []byte(csrfCookie.Value)) == 0 {
+			ob.Logf("Form CSRF and Cookie CSRF values do not match")
+			http.Error(w, "Invalid CSRF value.", http.StatusUnauthorized)
+			return
+		}
+
 		files := r.MultipartForm.File["files"]
 
-		//uploadQueue := make(chan *multipart.FileHeader, len(files)) // A channel that we can queue upload requests on
-		//
-		//for _, fileHeader := range files { // Loop through files attached in form and offload to uploadQueue channel
-		//	uploadQueue <- fileHeader
-		//}
+		uploadQueue := make(chan *multipart.FileHeader, len(files)) // A channel that we can queue upload requests on
 
-		zipBuffer := new(bytes.Buffer) // Create buffer for session's in-memory zip file
+		var fileSizes int64
+		for _, fileHeader := range files { // Loop through files attached in form and offload to uploadQueue channel
+			fileSizes += fileHeader.Size
+			uploadQueue <- fileHeader
+		}
 
-		zWriter := zip.NewWriter(zipBuffer) // Create new zip file
+		tb, _ := onionbuffer.Allocate(int(fileSizes))
+		zBuffer := bytes.NewBuffer(tb)
+		//zBuffer := new(bytes.Buffer, tb) // Create buffer for session's in-memory zip file
+		zWriter := zip.NewWriter(zBuffer) // Create new zip file
 
 		wg := new(sync.WaitGroup) // Wait group for sync
 		wg.Add(len(files))
 
 		go func() { // Write all files in queue to memory
-			if err := onionbuffer.WriteFilesToBuffers(zWriter, files, wg, ob.ChunkSize); err != nil {
+			if err := onionbuffer.WriteFilesToBuffers(zWriter, uploadQueue, wg, ob.ChunkSize); err != nil {
 				ob.Logf("Error writing files in queue to memory: %v", err)
 				http.Error(w, "Error writing your files to memory.", http.StatusInternalServerError)
 				return
@@ -70,14 +95,12 @@ func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 
 		wg.Wait() // Wait for zip to be finished
 
-		//close(uploadQueue) // Close uploadQueue channel after upload done
-
-		if err := syscall.Mlock(zipBuffer.Bytes()); err != nil { // Lock memory allotted to zipBuffer from being used in SWAP
-			ob.Logf("Error mlocking allotted memory for zipBuffer: %v", err)
-		}
-
 		if err := zWriter.Close(); err != nil { // Close zipwriter
 			ob.Logf("Error closing zip writer: %v", err)
+		}
+
+		if err := syscall.Mlock(zBuffer.Bytes()); err != nil { // Lock memory allotted to zBuffer from being used in SWAP
+			ob.Logf("Error mlocking allotted memory for zBuffer: %v", err)
 		}
 
 		// Create OnionBuffer object
@@ -86,7 +109,7 @@ func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("password_enabled") == "on" { // If password option was enabled
 			var err error
 			pass := r.FormValue("password")
-			oBuffer.Bytes, err = onionbuffer.Encrypt(zipBuffer.Bytes(), pass)
+			oBuffer.Bytes, err = onionbuffer.Encrypt(zBuffer.Bytes(), pass)
 			if err != nil {
 				ob.Logf("Error encrypting buffer: %v", err)
 				http.Error(w, "Error encrypting buffer.", http.StatusInternalServerError)
@@ -96,6 +119,7 @@ func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 			if err := syscall.Mlock(oBuffer.Bytes); err != nil { // Lock memory allotted to oBuffer from being used in SWAP
 				ob.Logf("Error mlocking allotted memory for oBuffer: %v", err)
 			}
+
 			oBuffer.Encrypted = true
 			chksm, err := oBuffer.GetChecksum()
 			if err != nil {
@@ -103,9 +127,12 @@ func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Error getting checksum.", http.StatusInternalServerError)
 				return
 			}
+
 			oBuffer.Checksum = chksm
-		} else {
-			oBuffer.Bytes = zipBuffer.Bytes()
+
+		} else { // If password option was NOT enabled
+			//subtle.ConstantTimeCopy(1, oBuffer.Bytes, zBuffer.Bytes())
+			oBuffer.Bytes = zBuffer.Bytes()
 
 			if err := syscall.Mlock(oBuffer.Bytes); err != nil { // Lock memory allotted to oBuffer from being used in SWAP
 				ob.Logf("Error mlocking allotted memory for oBuffer: %v", err)
@@ -117,6 +144,7 @@ func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Error getting checksum.", http.StatusInternalServerError)
 				return
 			}
+
 			oBuffer.Checksum = chksm
 		}
 
@@ -149,8 +177,9 @@ func (ob *Onionbox) upload(w http.ResponseWriter, r *http.Request) {
 		if err := oBuffer.Destroy(); err != nil { // Destroy temp OnionBuffer
 			ob.Logf("Error destroying temporary onionbuffer: %v", err)
 		}
+
 		// Write the zip's URL to client for sharing
-		_, err := w.Write([]byte(fmt.Sprintf("Files uploaded. Please share this link with your recipients: http://%s.onion/%s",
+		_, err = w.Write([]byte(fmt.Sprintf("Files uploaded. Please share this link with your recipients: http://%s.onion/%s",
 			ob.OnionURL, oBuffer.Name)))
 		if err != nil {
 			ob.Logf("Error writing to client: %v", err)

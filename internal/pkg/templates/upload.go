@@ -10,7 +10,7 @@ const UploadHTML = `<!DOCTYPE html>
     <body>
 		<center>
         <h2>Please select the file you would like to securely share.</h2>
-        <form method="post" enctype="multipart/form-data" action="/">
+        <form method="post" enctype="multipart/form-data">
             <input type="file" name="files" required multiple><br>
             <input type="hidden" name="token" value="{{.}}" required/>
             <h4>Advanced Options</h4>

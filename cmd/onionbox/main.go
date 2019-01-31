@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -11,25 +12,24 @@ import (
 	"time"
 
 	"github.com/ciehanski/onionbox/internal/pkg/onionbox"
-	"github.com/ciehanski/onionbox/internal/pkg/onionbuffer"
+	"github.com/ciehanski/onionbox/internal/pkg/onionstore"
 	"github.com/cretz/bine/tor"
 	"github.com/ipsn/go-libtor"
 	"github.com/natefinch/lumberjack"
 )
 
 func main() {
-	ob := &onionbox.Onionbox{ // Create onionbox instance that stores config
-		Version: "v0.1.0",
-		Logger:  log.New(os.Stdout, "[onionbox] ", log.LstdFlags),
-		Store:   onionbuffer.NewStore(),
+	ob := onionbox.Onionbox{ // Create onionbox instance that stores config
+		Logger: log.New(os.Stdout, "[onionbox] ", log.LstdFlags),
+		Store:  onionstore.NewStore(),
 	}
 
 	// Init flags
 	flag.BoolVar(&ob.Debug, "debug", false, "run in debug mode")
-	flag.BoolVar(&ob.TorVersion3, "torv3", true, "use version 3 of the Tor circuit")
-	flag.Int64Var(&ob.MaxFormMemory, "mem", 512, "max memory (mb) allotted for handling form file buffers")
-	flag.Int64Var(&ob.ChunkSize, "chunks", 1024, "size of chunks for buffer I/O")
-	flag.IntVar(&ob.Port, "port", 80, "port to expose the onion service on")
+	flag.BoolVar(&ob.TorVersion3, "torv3", true, "use version 3 of the Tor circuit (recommended)")
+	flag.Int64Var(&ob.MaxFormMemory, "mem", 512, "max memory (mb) allotted for handling form buffers")
+	flag.Int64Var(&ob.ChunkSize, "chunks", 1024, "size of chunks (bytes) for buffer I/O")
+	flag.IntVar(&ob.RemotePort, "port", 80, "remote port used to host the onion service")
 	flag.Parse()
 
 	// If debug is NOT enabled, write all logs to disk (instead of stdout)
@@ -50,15 +50,7 @@ func main() {
 		torLog = os.Stderr
 	}
 
-	// Create a separate go routine which infinitely loops through the store to check for
-	// expired buffer entries, and delete them.
-	go func() {
-		if err := ob.Store.DestroyExpiredBuffers(); err != nil {
-			ob.Logf("Error destroying expired buffers: %v", err)
-		}
-	}()
-
-	ob.Logf("Starting and registering onion service, please wait...")
+	fmt.Println("Starting and registering onion service, please wait...")
 	t, err := tor.Start(nil, &tor.StartConf{ // Start tor
 		ProcessCreator:         libtor.Creator,
 		DebugWriter:            torLog,
@@ -83,8 +75,8 @@ func main() {
 
 	// Create an onion service to listen on any port but show as 80
 	onionSvc, err := t.Listen(ctx, &tor.ListenConf{
-		RemotePorts: []int{ob.Port},
 		Version3:    ob.TorVersion3,
+		RemotePorts: []int{ob.RemotePort},
 	})
 	if err != nil {
 		ob.Logf("Error initializing onion service: %v", err)
@@ -97,9 +89,17 @@ func main() {
 		}
 	}()
 
+	// Create a separate go routine which infinitely loops through the store to check for
+	// expired buffer entries, and delete them.
+	go func() {
+		if err := ob.Store.DestroyExpiredBuffers(); err != nil {
+			ob.Logf("Error destroying expired buffers: %v", err)
+		}
+	}()
+
 	// Display the onion service URL
 	ob.OnionURL = onionSvc.ID
-	log.Printf("Please open a Tor capable browser and navigate to http://%v.onion\n", ob.OnionURL)
+	fmt.Printf("Please open a Tor capable browser and navigate to http://%v.onion\n", ob.OnionURL)
 
 	// Init serving
 	http.HandleFunc("/", ob.Router)
@@ -113,16 +113,14 @@ func main() {
 		Handler:      nil,
 	}
 
-	// Begin serving
-	errCh := make(chan error, 1)
-	go func() { errCh <- srv.Serve(onionSvc) }()
-	if err = <-errCh; err != nil {
+	srvErrCh := make(chan error, 1)
+	go func() { srvErrCh <- srv.Serve(onionSvc) }() // Begin serving
+	if err = <-srvErrCh; err != nil {
 		ob.Logf("Error serving on onion service: %v", err)
 		ob.Quit()
 	}
-
 	defer func() { // Proper server shutdown when program ends
-		if err = srv.Shutdown(context.Background()); err != nil {
+		if err := srv.Shutdown(context.Background()); err != nil {
 			ob.Logf("Error shutting down onionbox server: %v", err)
 			ob.Quit()
 		}

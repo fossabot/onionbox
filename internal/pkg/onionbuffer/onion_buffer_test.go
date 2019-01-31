@@ -3,6 +3,7 @@ package onionbuffer
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/subtle"
 	"testing"
 )
 
@@ -93,6 +94,21 @@ func BenchmarkWriteBytesInChunks(b *testing.B) {
 	}
 	for n := 0; n < b.N; n++ {
 		writeBytesByChunk(reader, zBuffer, 1024)
+	}
+}
+
+func BenchmarkSubtleTimeCopy(b *testing.B) {
+	testFile := []byte("Test file")
+	zb := new(bytes.Buffer)
+	zw := zip.NewWriter(zb)
+	defer zw.Close()
+	// Create file in zip with same name
+	zBuffer, err := zw.Create("testzip3")
+	if err != nil {
+		b.Error(err)
+	}
+	for n := 0; n < b.N; n++ {
+		subtle.ConstantTimeCopy(1, zBuffer, testFile)
 	}
 }
 
